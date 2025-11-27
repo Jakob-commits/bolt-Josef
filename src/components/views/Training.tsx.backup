@@ -1,0 +1,833 @@
+import { useState, useEffect } from 'react';
+import { PlayCircle, Phone, Users, FileText, TrendingUp, Target, ArrowLeft, ArrowRight, Upload, Sparkles, BookOpen } from 'lucide-react';
+import { SortableTwoColumn } from '../layout/SortableTwoColumn';
+import { useUI } from '../../contexts/UIContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
+import { TrainingMode as TrainingModeType } from '../cards/TrainingModesCard';
+import { Difficulty as DifficultyType } from '../cards/DifficultyCard';
+import { DisgType as DisgTypeInterface, NlpTrait as NlpTraitInterface } from '../cards/CustomerTypeCard';
+
+type UserPlan = 'basic' | 'pro' | 'enterprise';
+type TrainingMode = 'full-conversation' | 'cold-call' | 'objection' | 'needs' | 'smalltalk' | 'closing';
+type Difficulty = 'beginner' | 'advanced' | 'expert';
+type DisgType = 'yellow' | 'blue' | 'green' | 'red';
+type NlpTrait = 'details' | 'fast-decider' | 'facts' | 'relationship';
+type GuideMode = 'internal' | 'generated' | 'saved';
+
+interface TrainingGuide {
+  id: string;
+  user_id: string;
+  title: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface MetaPrograms {
+  detailLevel: 'detail' | 'overview' | null;
+  decisionSpeed: 'fast' | 'slow' | null;
+  focusType: 'facts' | 'relationship' | null;
+  communicationStyle: 'direct' | 'indirect' | null;
+}
+
+export function Training() {
+  const { isEditing, saveLayout, cancelEditing, setCurrentPage } = useUI();
+  const { user } = useAuth();
+  const userPlan: UserPlan = 'basic';
+
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [maxVisitedStep, setMaxVisitedStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [hasUsedBack, setHasUsedBack] = useState(false);
+
+  const [selectedMode, setSelectedMode] = useState<TrainingMode>('full-conversation');
+  const [selectedDifficulty, setSelectedDifficulty] = useState<Difficulty>('beginner');
+  const [selectedDisgType, setSelectedDisgType] = useState<DisgType | null>(null);
+  const [selectedNlpTraits, setSelectedNlpTraits] = useState<NlpTrait[]>([]);
+
+  const [metaPrograms, setMetaPrograms] = useState<MetaPrograms>({
+    detailLevel: null,
+    decisionSpeed: null,
+    focusType: null,
+    communicationStyle: null,
+  });
+
+  const [selectedGuideMode, setSelectedGuideMode] = useState<GuideMode | null>(null);
+  const [selectedGuideId, setSelectedGuideId] = useState<string | null>(null);
+  const [availableGuides, setAvailableGuides] = useState<TrainingGuide[]>([]);
+
+  useEffect(() => {
+    setCurrentPage('training');
+    return () => setCurrentPage(null);
+  }, [setCurrentPage]);
+
+  useEffect(() => {
+    if (user) {
+      loadGuides();
+    }
+  }, [user]);
+
+  async function loadGuides() {
+    if (!user) return;
+    const { data, error } = await supabase
+      .from('training_guides')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (!error && data) {
+      setAvailableGuides(data);
+    }
+  }
+
+  function goToStep(target: 1 | 2 | 3 | 4 | 5) {
+    setStep(target);
+    setMaxVisitedStep(prev => (target > prev ? target : prev));
+  }
+
+  function handleStepBack() {
+    if (step === 1) return;
+    setHasUsedBack(true);
+    setStep(prev => (prev - 1) as 1 | 2 | 3 | 4 | 5);
+  }
+
+  function handleStepForward() {
+    if (!hasUsedBack) return;
+    if (step >= maxVisitedStep) return;
+    setStep(prev => (prev + 1) as 1 | 2 | 3 | 4 | 5);
+  }
+
+  function handleStep1Next() {
+    goToStep(2);
+  }
+
+  function handleStep2Next() {
+    if (!selectedDisgType) return;
+    goToStep(3);
+  }
+
+  function handleStep3Next() {
+    const allSet = metaPrograms.detailLevel && metaPrograms.decisionSpeed && metaPrograms.focusType && metaPrograms.communicationStyle;
+    if (!allSet) return;
+    goToStep(4);
+  }
+
+  function handleStep4Next() {
+    if (!selectedGuideMode) return;
+    if (selectedGuideMode === 'saved' && !selectedGuideId) return;
+    goToStep(5);
+  }
+
+  const weeklyPlanTrainings = [
+    {
+      title: 'Einwandtraining "Zu teuer"',
+      level: 'Fortgeschritten',
+      description: 'Preiseinwände souverän meistern',
+    },
+    {
+      title: 'Smalltalk-Training',
+      level: 'Anfänger',
+      description: 'Beziehung aufbauen und Vertrauen schaffen',
+    },
+    {
+      title: 'Abschlusstraining',
+      level: 'Fortgeschritten',
+      description: 'Sicher zum Abschluss führen',
+    },
+  ];
+
+  const trainingModes: TrainingModeType[] = [
+    {
+      id: 'full-conversation',
+      title: 'Vollständiges Kundengespräch',
+      description: 'Vom ersten Hallo bis zum Abschluss.',
+      icon: Users,
+    },
+    {
+      id: 'cold-call',
+      title: 'Cold Call',
+      description: 'Direkter Erstkontakt am Telefon.',
+      icon: Phone,
+    },
+    {
+      id: 'objection',
+      title: 'Einwandbehandlung',
+      description: 'Trainiere gezielt den Umgang mit Einwänden.',
+      icon: Target,
+    },
+    {
+      id: 'needs',
+      title: 'Bedarfsanalyse',
+      description: 'Verbessere deine Fragetechnik und Analysefähigkeit.',
+      icon: FileText,
+    },
+    {
+      id: 'smalltalk',
+      title: 'Smalltalk & Beziehungsaufbau',
+      description: 'Lerne Vertrauen aufzubauen.',
+      icon: Users,
+    },
+    {
+      id: 'closing',
+      title: 'Abschlusstraining',
+      description: 'Werde sicherer in der Abschlussphase.',
+      icon: TrendingUp,
+    },
+  ];
+
+  const difficulties: DifficultyType[] = [
+    {
+      id: 'beginner',
+      title: 'Anfänger',
+      description: 'Wohlwollender Kunde, einfache Einwände',
+    },
+    {
+      id: 'advanced',
+      title: 'Fortgeschritten',
+      description: 'Realistische Einwände, höhere Dynamik',
+    },
+    {
+      id: 'expert',
+      title: 'Profi',
+      description: 'Anspruchsvoll, skeptisch, klare Struktur nötig',
+    },
+  ];
+
+  const disgTypes: DisgTypeInterface[] = [
+    { id: 'yellow', title: 'Gelb', description: 'Beziehungsorientiert', color: 'bg-yellow-400' },
+    { id: 'blue', title: 'Blau', description: 'Analytisch', color: 'bg-blue-500' },
+    { id: 'green', title: 'Grün', description: 'Harmonisch', color: 'bg-green-500' },
+    { id: 'red', title: 'Rot', description: 'Dominant', color: 'bg-red-500' },
+  ];
+
+  const nlpTraits: NlpTraitInterface[] = [
+    { id: 'details', title: 'Detailorientiert' },
+    { id: 'fast-decider', title: 'Schnellentscheider' },
+    { id: 'facts', title: 'Faktenfokus' },
+    { id: 'relationship', title: 'Beziehungsfokus' },
+  ];
+
+  const dailyQuotes: string[] = [
+    "Versuche, jede Katastrophe in eine Chance zu verwandeln.",
+    "Angst ist der Zerstörer Deiner Träume und der Killer Deiner Ambitionen.",
+    "Wenn Du an etwas glaubst, verkaufe es mit Überzeugung.",
+    "Risikiere mehr, als Du Dir traust. Du wirst mehr Abschlüsse erzielen, als Du erwartest.",
+    "Vertrauen und Enthusiasmus sind Deine größten Vertriebsproduzenten.",
+  ];
+
+  const today = new Date();
+  const dayIndex = (today.getFullYear() * 1000 + today.getMonth() * 50 + today.getDate()) % dailyQuotes.length;
+  const quoteOfTheDay = dailyQuotes[dayIndex];
+
+  const handleToggleNlpTrait = (traitId: string) => {
+    setSelectedNlpTraits(prev =>
+      prev.includes(traitId as NlpTrait)
+        ? prev.filter(t => t !== traitId)
+        : [...prev, traitId as NlpTrait]
+    );
+  };
+
+  if (isEditing) {
+    const layoutDefinition = {
+      left: ['trainingModes', 'difficulty', 'quote'],
+      right: ['weeklyTrainingPlan', 'customerAvatar'],
+    };
+
+    const cardProps = {
+      trainingModes: {
+        modes: trainingModes,
+        selectedMode,
+        onSelectMode: (id: string) => setSelectedMode(id as TrainingMode),
+        userPlan,
+      },
+      difficulty: {
+        difficulties,
+        selectedDifficulty,
+        onSelectDifficulty: (id: string) => setSelectedDifficulty(id as Difficulty),
+        userPlan,
+      },
+      quote: {
+        quote: quoteOfTheDay,
+        userPlan,
+      },
+      weeklyTrainingPlan: { userPlan, weeklyPlan: weeklyPlanTrainings },
+      customerAvatar: {
+        disgTypes,
+        nlpTraits,
+        selectedDisgType,
+        selectedNlpTraits,
+        onSelectDisgType: (id: string) => setSelectedDisgType(id as DisgType),
+        onToggleNlpTrait: handleToggleNlpTrait,
+        userPlan,
+      },
+    };
+
+    return (
+      <div className="min-h-screen bg-gray-50 pb-20 lg:pb-8">
+        <div className="max-w-7xl mx-auto px-4 py-6 md:py-8">
+          <div className="mb-8 flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">Training Suite</h1>
+              <p className="text-gray-600">Wähle aus, wie du heute trainieren möchtest.</p>
+            </div>
+          </div>
+
+          <SortableTwoColumn
+            page="training"
+            columns={layoutDefinition}
+            cardProps={cardProps}
+          />
+        </div>
+
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-center gap-4 py-4 shadow-lg z-50">
+          <button
+            onClick={cancelEditing}
+            className="bg-red-500 hover:bg-red-600 text-white font-semibold px-6 py-3 rounded-lg shadow transition-colors"
+          >
+            Abbrechen
+          </button>
+          <button
+            onClick={saveLayout}
+            className="bg-green-500 hover:bg-green-600 text-white font-semibold px-6 py-3 rounded-lg shadow transition-colors"
+          >
+            Speichern
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 pb-20 lg:pb-8">
+      <div className="max-w-5xl mx-auto px-4 py-6 md:py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">Training Suite</h1>
+          <p className="text-gray-600">Individualisiere dein Training in 5 Schritten</p>
+        </div>
+
+        <div className="mb-8 flex items-center justify-center gap-2">
+          {[1, 2, 3, 4, 5].map(s => (
+            <div
+              key={s}
+              className={`w-12 h-12 rounded-full flex items-center justify-center font-semibold transition-colors ${
+                s === step
+                  ? 'bg-cyan-500 text-white'
+                  : s <= maxVisitedStep
+                  ? 'bg-cyan-100 text-cyan-700'
+                  : 'bg-gray-200 text-gray-500'
+              }`}
+            >
+              {s}
+            </div>
+          ))}
+        </div>
+
+        {step === 1 && (
+          <div className="bg-white rounded-2xl shadow-sm p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Schritt 1: Trainingsmodus wählen</h2>
+            <p className="text-gray-600 mb-6">Wähle aus, welchen Bereich du heute trainieren möchtest.</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              {trainingModes.map(mode => {
+                const Icon = mode.icon;
+                return (
+                  <div
+                    key={mode.id}
+                    onClick={() => setSelectedMode(mode.id as TrainingMode)}
+                    className={`p-4 border-2 rounded-xl cursor-pointer transition-all ${
+                      selectedMode === mode.id
+                        ? 'border-cyan-500 bg-cyan-50'
+                        : 'border-gray-200 hover:border-cyan-300'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <Icon className="w-6 h-6 text-cyan-600 flex-shrink-0" />
+                      <div>
+                        <h3 className="font-semibold text-gray-900">{mode.title}</h3>
+                        <p className="text-sm text-gray-600 mt-1">{mode.description}</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={handleStep1Next}
+              disabled={!selectedMode}
+              className={`w-full py-3 px-6 rounded-xl font-semibold transition-colors ${
+                selectedMode
+                  ? 'bg-cyan-500 hover:bg-cyan-600 text-white'
+                  : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+              }`}
+            >
+              Individualisieren
+            </button>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="bg-white rounded-2xl shadow-sm p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Schritt 2: Menschentyp auswählen</h2>
+            <p className="text-gray-600 mb-6">Welcher Kundentyp soll im Training simuliert werden?</p>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              {disgTypes.map(type => (
+                <div
+                  key={type.id}
+                  onClick={() => setSelectedDisgType(type.id as DisgType)}
+                  className={`p-6 border-2 rounded-xl cursor-pointer transition-all text-center ${
+                    selectedDisgType === type.id
+                      ? 'border-cyan-500 bg-cyan-50'
+                      : 'border-gray-200 hover:border-cyan-300'
+                  }`}
+                >
+                  <div className={`w-16 h-16 ${type.color} rounded-full mx-auto mb-3`}></div>
+                  <h3 className="font-semibold text-gray-900">{type.title}</h3>
+                  <p className="text-sm text-gray-600 mt-1">{type.description}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-8 flex items-center justify-between border-t border-gray-200 pt-4">
+              <button
+                onClick={handleStepBack}
+                className="inline-flex items-center gap-2 px-4 py-2 text-gray-700 hover:text-gray-900 transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Zurück
+              </button>
+
+              {hasUsedBack && (
+                <button
+                  onClick={handleStepForward}
+                  disabled={step >= maxVisitedStep}
+                  className={`inline-flex items-center gap-2 px-4 py-2 transition-colors ${
+                    step >= maxVisitedStep
+                      ? 'text-gray-400 cursor-not-allowed'
+                      : 'text-gray-700 hover:text-gray-900'
+                  }`}
+                >
+                  Weiter
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              )}
+
+              {!hasUsedBack && (
+                <button
+                  onClick={handleStep2Next}
+                  disabled={!selectedDisgType}
+                  className={`inline-flex items-center gap-2 px-6 py-2 rounded-lg font-semibold transition-colors ${
+                    selectedDisgType
+                      ? 'bg-cyan-500 hover:bg-cyan-600 text-white'
+                      : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  Weiter
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="bg-white rounded-2xl shadow-sm p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Schritt 3: META-Programme festlegen</h2>
+            <p className="text-gray-600 mb-6">Definiere die Kommunikationspräferenzen deines Kunden</p>
+
+            <div className="space-y-6 mb-6">
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-3">Detailgrad</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div
+                    onClick={() => setMetaPrograms(prev => ({ ...prev, detailLevel: 'detail' }))}
+                    className={`p-4 border-2 rounded-xl cursor-pointer transition-all ${
+                      metaPrograms.detailLevel === 'detail'
+                        ? 'border-cyan-500 bg-cyan-50'
+                        : 'border-gray-200 hover:border-cyan-300'
+                    }`}
+                  >
+                    <p className="font-semibold">Detailorientiert</p>
+                    <p className="text-sm text-gray-600">Benötigt viele Details</p>
+                  </div>
+                  <div
+                    onClick={() => setMetaPrograms(prev => ({ ...prev, detailLevel: 'overview' }))}
+                    className={`p-4 border-2 rounded-xl cursor-pointer transition-all ${
+                      metaPrograms.detailLevel === 'overview'
+                        ? 'border-cyan-500 bg-cyan-50'
+                        : 'border-gray-200 hover:border-cyan-300'
+                    }`}
+                  >
+                    <p className="font-semibold">Big Picture</p>
+                    <p className="text-sm text-gray-600">Bevorzugt Überblick</p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-3">Entscheidungsgeschwindigkeit</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div
+                    onClick={() => setMetaPrograms(prev => ({ ...prev, decisionSpeed: 'fast' }))}
+                    className={`p-4 border-2 rounded-xl cursor-pointer transition-all ${
+                      metaPrograms.decisionSpeed === 'fast'
+                        ? 'border-cyan-500 bg-cyan-50'
+                        : 'border-gray-200 hover:border-cyan-300'
+                    }`}
+                  >
+                    <p className="font-semibold">Schnellentscheider</p>
+                    <p className="text-sm text-gray-600">Trifft rasche Entscheidungen</p>
+                  </div>
+                  <div
+                    onClick={() => setMetaPrograms(prev => ({ ...prev, decisionSpeed: 'slow' }))}
+                    className={`p-4 border-2 rounded-xl cursor-pointer transition-all ${
+                      metaPrograms.decisionSpeed === 'slow'
+                        ? 'border-cyan-500 bg-cyan-50'
+                        : 'border-gray-200 hover:border-cyan-300'
+                    }`}
+                  >
+                    <p className="font-semibold">Bedächtig</p>
+                    <p className="text-sm text-gray-600">Nimmt sich Zeit</p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-3">Fokus</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div
+                    onClick={() => setMetaPrograms(prev => ({ ...prev, focusType: 'facts' }))}
+                    className={`p-4 border-2 rounded-xl cursor-pointer transition-all ${
+                      metaPrograms.focusType === 'facts'
+                        ? 'border-cyan-500 bg-cyan-50'
+                        : 'border-gray-200 hover:border-cyan-300'
+                    }`}
+                  >
+                    <p className="font-semibold">Fakten</p>
+                    <p className="text-sm text-gray-600">Zahlen, Daten, Fakten</p>
+                  </div>
+                  <div
+                    onClick={() => setMetaPrograms(prev => ({ ...prev, focusType: 'relationship' }))}
+                    className={`p-4 border-2 rounded-xl cursor-pointer transition-all ${
+                      metaPrograms.focusType === 'relationship'
+                        ? 'border-cyan-500 bg-cyan-50'
+                        : 'border-gray-200 hover:border-cyan-300'
+                    }`}
+                  >
+                    <p className="font-semibold">Beziehung</p>
+                    <p className="text-sm text-gray-600">Emotionen und Vertrauen</p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-3">Kommunikationsstil</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div
+                    onClick={() => setMetaPrograms(prev => ({ ...prev, communicationStyle: 'direct' }))}
+                    className={`p-4 border-2 rounded-xl cursor-pointer transition-all ${
+                      metaPrograms.communicationStyle === 'direct'
+                        ? 'border-cyan-500 bg-cyan-50'
+                        : 'border-gray-200 hover:border-cyan-300'
+                    }`}
+                  >
+                    <p className="font-semibold">Direkt</p>
+                    <p className="text-sm text-gray-600">Klar und auf den Punkt</p>
+                  </div>
+                  <div
+                    onClick={() => setMetaPrograms(prev => ({ ...prev, communicationStyle: 'indirect' }))}
+                    className={`p-4 border-2 rounded-xl cursor-pointer transition-all ${
+                      metaPrograms.communicationStyle === 'indirect'
+                        ? 'border-cyan-500 bg-cyan-50'
+                        : 'border-gray-200 hover:border-cyan-300'
+                    }`}
+                  >
+                    <p className="font-semibold">Indirekt</p>
+                    <p className="text-sm text-gray-600">Diplomatisch und behutsam</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 flex items-center justify-between border-t border-gray-200 pt-4">
+              <button
+                onClick={handleStepBack}
+                className="inline-flex items-center gap-2 px-4 py-2 text-gray-700 hover:text-gray-900 transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Zurück
+              </button>
+
+              {hasUsedBack && (
+                <button
+                  onClick={handleStepForward}
+                  disabled={step >= maxVisitedStep}
+                  className={`inline-flex items-center gap-2 px-4 py-2 transition-colors ${
+                    step >= maxVisitedStep
+                      ? 'text-gray-400 cursor-not-allowed'
+                      : 'text-gray-700 hover:text-gray-900'
+                  }`}
+                >
+                  Weiter
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              )}
+
+              {!hasUsedBack && (
+                <button
+                  onClick={handleStep3Next}
+                  disabled={!metaPrograms.detailLevel || !metaPrograms.decisionSpeed || !metaPrograms.focusType || !metaPrograms.communicationStyle}
+                  className={`inline-flex items-center gap-2 px-6 py-2 rounded-lg font-semibold transition-colors ${
+                    metaPrograms.detailLevel && metaPrograms.decisionSpeed && metaPrograms.focusType && metaPrograms.communicationStyle
+                      ? 'bg-cyan-500 hover:bg-cyan-600 text-white'
+                      : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  Weiter
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="bg-white rounded-2xl shadow-sm p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Schritt 4: Vorgaben auswählen</h2>
+            <p className="text-gray-600 mb-6">Wähle, welche Art von Leitfaden für das Training verwendet werden soll</p>
+
+            <div className="space-y-3 mb-6">
+              <div
+                onClick={() => {
+                  setSelectedGuideMode('internal');
+                  setSelectedGuideId(null);
+                }}
+                className={`p-4 border-2 rounded-xl hover:bg-gray-50 cursor-pointer transition-all ${
+                  selectedGuideMode === 'internal' ? 'border-cyan-500 bg-cyan-50' : 'border-gray-200'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <Upload className="w-6 h-6 text-cyan-600 flex-shrink-0 mt-1" />
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Firmeninterne Vorgaben</h3>
+                    <p className="text-sm text-gray-600 mt-1">Nutze ein von deiner Firma hochgeladenes PDF.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                onClick={() => {
+                  setSelectedGuideMode('generated');
+                  setSelectedGuideId(null);
+                }}
+                className={`p-4 border-2 rounded-xl hover:bg-gray-50 cursor-pointer transition-all ${
+                  selectedGuideMode === 'generated' ? 'border-cyan-500 bg-cyan-50' : 'border-gray-200'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <Sparkles className="w-6 h-6 text-cyan-600 flex-shrink-0 mt-1" />
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Gestalten lassen</h3>
+                    <p className="text-sm text-gray-600 mt-1">KI erzeugt automatisch einen Leitfaden basierend auf deinen Einstellungen.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                onClick={() => setSelectedGuideMode('saved')}
+                className={`p-4 border-2 rounded-xl hover:bg-gray-50 cursor-pointer transition-all ${
+                  selectedGuideMode === 'saved' ? 'border-cyan-500 bg-cyan-50' : 'border-gray-200'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <BookOpen className="w-6 h-6 text-cyan-600 flex-shrink-0 mt-1" />
+                  <div>
+                    <h3 className="font-semibold text-gray-900">Gespeicherte Leitfäden</h3>
+                    <p className="text-sm text-gray-600 mt-1">Wähle einen deiner gespeicherten Leitfäden aus.</p>
+                  </div>
+                </div>
+              </div>
+
+              {selectedGuideMode === 'saved' && (
+                <div className="mt-4 ml-9 flex flex-col gap-3">
+                  {availableGuides.length === 0 ? (
+                    <div className="p-4 bg-gray-50 rounded-xl text-center text-gray-600">
+                      <p>Keine gespeicherten Leitfäden vorhanden.</p>
+                      <p className="text-sm mt-1">Erstelle zuerst einen Leitfaden, um ihn hier zu verwenden.</p>
+                    </div>
+                  ) : (
+                    availableGuides.map(guide => (
+                      <div
+                        key={guide.id}
+                        onClick={() => setSelectedGuideId(guide.id)}
+                        className={`p-4 border-2 rounded-xl cursor-pointer transition-all ${
+                          selectedGuideId === guide.id
+                            ? 'bg-cyan-50 border-cyan-400'
+                            : 'hover:bg-gray-50 border-gray-200'
+                        }`}
+                      >
+                        <h4 className="font-semibold text-gray-900">{guide.title}</h4>
+                        <p className="text-xs text-gray-600 mt-1">{guide.content?.slice(0, 80)}...</p>
+                        <p className="text-xs text-gray-400 mt-2">
+                          Erstellt: {new Date(guide.created_at).toLocaleDateString('de-DE')}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-8 flex items-center justify-between border-t border-gray-200 pt-4">
+              <button
+                onClick={handleStepBack}
+                className="inline-flex items-center gap-2 px-4 py-2 text-gray-700 hover:text-gray-900 transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Zurück
+              </button>
+
+              {hasUsedBack && (
+                <button
+                  onClick={handleStepForward}
+                  disabled={step >= maxVisitedStep}
+                  className={`inline-flex items-center gap-2 px-4 py-2 transition-colors ${
+                    step >= maxVisitedStep
+                      ? 'text-gray-400 cursor-not-allowed'
+                      : 'text-gray-700 hover:text-gray-900'
+                  }`}
+                >
+                  Weiter
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              )}
+
+              {!hasUsedBack && (
+                <button
+                  onClick={handleStep4Next}
+                  disabled={!selectedGuideMode || (selectedGuideMode === 'saved' && !selectedGuideId)}
+                  className={`inline-flex items-center gap-2 px-6 py-2 rounded-lg font-semibold transition-colors ${
+                    selectedGuideMode && (selectedGuideMode !== 'saved' || selectedGuideId)
+                      ? 'bg-cyan-500 hover:bg-cyan-600 text-white'
+                      : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  Weiter
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {step === 5 && (
+          <div className="bg-white rounded-2xl shadow-sm p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Schritt 5: Agenten-Entwurf</h2>
+            <p className="text-gray-600 mb-6">Zusammenfassung aller Konfigurationen (Developer-Ansicht)</p>
+
+            <div className="space-y-4 mb-6 bg-gray-50 rounded-xl p-6">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-500 uppercase mb-1">Trainingsmodus</h3>
+                <p className="text-lg font-semibold text-gray-900">
+                  {trainingModes.find(m => m.id === selectedMode)?.title}
+                </p>
+              </div>
+
+              <div className="border-t border-gray-200 pt-4">
+                <h3 className="text-sm font-semibold text-gray-500 uppercase mb-1">Menschentyp</h3>
+                <p className="text-lg font-semibold text-gray-900">
+                  {disgTypes.find(t => t.id === selectedDisgType)?.title} - {disgTypes.find(t => t.id === selectedDisgType)?.description}
+                </p>
+              </div>
+
+              <div className="border-t border-gray-200 pt-4">
+                <h3 className="text-sm font-semibold text-gray-500 uppercase mb-2">META-Programme</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-sm text-gray-600">Detailgrad:</p>
+                    <p className="font-semibold text-gray-900">
+                      {metaPrograms.detailLevel === 'detail' ? 'Detailorientiert' : 'Big Picture'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Entscheidung:</p>
+                    <p className="font-semibold text-gray-900">
+                      {metaPrograms.decisionSpeed === 'fast' ? 'Schnell' : 'Bedächtig'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Fokus:</p>
+                    <p className="font-semibold text-gray-900">
+                      {metaPrograms.focusType === 'facts' ? 'Fakten' : 'Beziehung'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Kommunikation:</p>
+                    <p className="font-semibold text-gray-900">
+                      {metaPrograms.communicationStyle === 'direct' ? 'Direkt' : 'Indirekt'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t border-gray-200 pt-4">
+                <h3 className="text-sm font-semibold text-gray-500 uppercase mb-1">Vorgaben</h3>
+                {selectedGuideMode === 'internal' && (
+                  <p className="text-lg font-semibold text-gray-900">Firmeninterne PDF-Vorgabe</p>
+                )}
+                {selectedGuideMode === 'generated' && (
+                  <p className="text-lg font-semibold text-gray-900">KI-generierter Leitfaden</p>
+                )}
+                {selectedGuideMode === 'saved' && selectedGuideId && (
+                  <div>
+                    <p className="text-lg font-semibold text-gray-900">
+                      {availableGuides.find(g => g.id === selectedGuideId)?.title}
+                    </p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      ID: {selectedGuideId.slice(0, 8)}...
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+              <h4 className="font-semibold text-blue-900 mb-2">Hinweis für Entwickler</h4>
+              <p className="text-sm text-blue-800">
+                Abhängig vom Schwierigkeitsgrad ({selectedDifficulty}) müssen unterschiedliche Prozentwerte der
+                Verkaufsfähigkeiten erfüllt werden. Der Agent wird entsprechend der gewählten Parameter konfiguriert
+                und simuliert einen realistischen Gesprächspartner mit den definierten Eigenschaften.
+              </p>
+            </div>
+
+            <div className="mt-8 flex items-center justify-between border-t border-gray-200 pt-4">
+              <button
+                onClick={handleStepBack}
+                className="inline-flex items-center gap-2 px-4 py-2 text-gray-700 hover:text-gray-900 transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Zurück
+              </button>
+
+              <button
+                onClick={() => console.log('Training starten mit:', {
+                  mode: selectedMode,
+                  disgType: selectedDisgType,
+                  metaPrograms,
+                  guideMode: selectedGuideMode,
+                  guideId: selectedGuideId,
+                  difficulty: selectedDifficulty,
+                })}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold bg-green-500 hover:bg-green-600 text-white transition-colors"
+              >
+                <PlayCircle className="w-5 h-5" />
+                Training jetzt starten
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

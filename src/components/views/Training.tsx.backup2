@@ -1,0 +1,748 @@
+import { useState, useEffect } from 'react';
+import { PlayCircle, Phone, Users, FileText, TrendingUp, Target, ArrowLeft, ArrowRight, Upload, Sparkles, BookOpen, Shuffle, UserCircle } from 'lucide-react';
+import { InfoTooltip } from '../ui/InfoTooltip';
+import { MODE_DESCRIPTIONS, COLOR_TYPE_DESCRIPTIONS, META_PROGRAM_DESCRIPTIONS, GUIDE_MODE_DESCRIPTIONS } from '../../constants/trainingDescriptions';
+import { useUI } from '../../contexts/UIContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
+
+interface TrainingProps {
+  onNavigate?: (view: string) => void;
+}
+
+type TrainingMode = 'full-conversation' | 'cold-call' | 'objection' | 'needs' | 'smalltalk' | 'closing';
+type DisgType = 'yellow' | 'blue' | 'green' | 'red';
+type GuideMode = 'internal' | 'generated' | 'saved';
+type DifficultyLevel = 'leicht' | 'mittel' | 'schwer';
+
+interface TrainingGuide {
+  id: string;
+  user_id: string;
+  title: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface MetaPrograms {
+  detailLevel: 'detail' | 'overview' | null;
+  decisionSpeed: 'fast' | 'slow' | null;
+  focusType: 'facts' | 'relationship' | null;
+  communicationStyle: 'direct' | 'indirect' | null;
+}
+
+export function Training({ onNavigate }: TrainingProps = {}) {
+  const { setCurrentPage } = useUI();
+  const { user, profile } = useAuth();
+
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
+  const [maxVisitedStep, setMaxVisitedStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
+  const [hasUsedBack, setHasUsedBack] = useState(false);
+
+  const [selectedMode, setSelectedMode] = useState<TrainingMode | null>(null);
+  const [selectedDisgType, setSelectedDisgType] = useState<DisgType | null>(null);
+  const [selectedDifficulty, setSelectedDifficulty] = useState<DifficultyLevel>('leicht');
+
+  const [metaPrograms, setMetaPrograms] = useState<MetaPrograms>({
+    detailLevel: null,
+    decisionSpeed: null,
+    focusType: null,
+    communicationStyle: null,
+  });
+
+  const [selectedGuideMode, setSelectedGuideMode] = useState<GuideMode | null>(null);
+  const [selectedGuideId, setSelectedGuideId] = useState<string | null>(null);
+  const [availableGuides, setAvailableGuides] = useState<TrainingGuide[]>([]);
+
+  const userPackage = profile?.package || 'starter';
+  const isProUser = userPackage === 'pro';
+  const isPremiumOrPro = userPackage === 'premium' || userPackage === 'pro';
+
+  const trainingModes = [
+    { id: 'full-conversation', title: 'Gesamtgespräch', description: 'Vollständiges Verkaufsgespräch von Beginn bis Abschluss', icon: Phone },
+    { id: 'cold-call', title: 'Kaltakquise', description: 'Erstkontakt und Türöffner-Training', icon: Phone },
+    { id: 'objection', title: 'Einwandbehandlung', description: 'Umgang mit Vorbehalten und Bedenken', icon: FileText },
+    { id: 'needs', title: 'Bedarfsermittlung', description: 'Fragen stellen und aktiv zuhören', icon: Target },
+    { id: 'smalltalk', title: 'Small Talk', description: 'Beziehungsaufbau und Gesprächseinstieg', icon: Users },
+    { id: 'closing', title: 'Abschluss', description: 'Deal finalisieren und Commitment einholen', icon: TrendingUp },
+  ];
+
+  const disgTypes = [
+    { id: 'yellow', title: 'Gelb', description: 'Initiativ', color: 'bg-yellow-400' },
+    { id: 'blue', title: 'Blau', description: 'Gewissenhaft', color: 'bg-blue-400' },
+    { id: 'green', title: 'Grün', description: 'Stetig', color: 'bg-green-400' },
+    { id: 'red', title: 'Rot', description: 'Dominant', color: 'bg-red-400' },
+  ];
+
+  const difficultyLevels = [
+    { id: 'leicht', title: 'Anfänger', description: 'Ideal zum Einstieg oder Aufwärmen', icon: '🌱' },
+    { id: 'mittel', title: 'Fortgeschritten', description: 'Realistische Alltagssituationen', icon: '⚡' },
+    { id: 'schwer', title: 'Profi', description: 'Herausfordernde Szenarien für Profis', icon: '🔥' },
+  ];
+
+  const guideModes = [
+    { id: 'internal', title: 'Firmeninterne Vorgaben', description: 'Standard-Verkaufsmethodik vom System', icon: BookOpen, packages: ['pro'] },
+    { id: 'generated', title: 'Gestalten lassen', description: 'Individuell angepasst auf deine Branche/Produkt', icon: Sparkles, packages: ['starter', 'premium', 'pro'] },
+    { id: 'saved', title: 'Gespeicherte Leitfäden', description: 'Verwende deine gespeicherten Verkaufsskripte', icon: Upload, packages: ['pro'] },
+  ];
+
+  useEffect(() => {
+    setCurrentPage('training');
+    return () => setCurrentPage(null);
+  }, [setCurrentPage]);
+
+  useEffect(() => {
+    if (user) {
+      loadGuides();
+    }
+  }, [user]);
+
+  async function loadGuides() {
+    if (!user) return;
+    const { data, error } = await supabase
+      .from('training_guides')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (!error && data) {
+      setAvailableGuides(data);
+    }
+  }
+
+  function goToStep(target: 1 | 2 | 3 | 4 | 5 | 6) {
+    setStep(target);
+    setMaxVisitedStep(prev => (target > prev ? target : prev));
+  }
+
+  function handleStepBack() {
+    if (step === 1) return;
+    setHasUsedBack(true);
+    setStep(prev => (prev - 1) as 1 | 2 | 3 | 4 | 5 | 6);
+  }
+
+  function handleStepForward() {
+    if (!hasUsedBack) return;
+    if (step >= maxVisitedStep) return;
+    setStep(prev => (prev + 1) as 1 | 2 | 3 | 4 | 5 | 6);
+  }
+
+  function handleStep1Next() {
+    if (!selectedMode) return;
+    goToStep(2);
+  }
+
+  function handleStep2Next() {
+    if (userPackage === 'starter' && !selectedDisgType) {
+      const types: DisgType[] = ['yellow', 'blue', 'green', 'red'];
+      setSelectedDisgType(types[Math.floor(Math.random() * types.length)]);
+    }
+    goToStep(3);
+  }
+
+  function handleStep3Next() {
+    goToStep(4);
+  }
+
+  function handleStep4Next() {
+    if (!selectedGuideMode || (selectedGuideMode === 'saved' && !selectedGuideId)) return;
+    goToStep(5);
+  }
+
+  function handleStep5Next() {
+    goToStep(6);
+  }
+
+  function randomizeStep2() {
+    const types: DisgType[] = ['yellow', 'blue', 'green', 'red'];
+    setSelectedDisgType(types[Math.floor(Math.random() * types.length)]);
+  }
+
+  function randomizeStep3() {
+    if (!isProUser) return;
+    setMetaPrograms({
+      detailLevel: Math.random() > 0.5 ? 'detail' : 'overview',
+      decisionSpeed: Math.random() > 0.5 ? 'fast' : 'slow',
+      focusType: Math.random() > 0.5 ? 'facts' : 'relationship',
+      communicationStyle: Math.random() > 0.5 ? 'direct' : 'indirect',
+    });
+  }
+
+  function startTraining() {
+    const config = {
+      mode: selectedMode,
+      disgType: selectedDisgType,
+      metaPrograms: isProUser ? metaPrograms : null,
+      guideMode: selectedGuideMode,
+      guideId: selectedGuideId,
+      difficulty: selectedDifficulty,
+    };
+    console.log('Starting training with config:', config);
+  }
+
+  const steps = [
+    { number: 1, label: 'Modus', active: step === 1, completed: step > 1 },
+    { number: 2, label: 'Menschentyp', active: step === 2, completed: step > 2 },
+    { number: 3, label: 'META-Programme', active: step === 3, completed: step > 3 },
+    { number: 4, label: 'Vorgaben', active: step === 4, completed: step > 4 },
+    { number: 5, label: 'Schwierigkeit', active: step === 5, completed: step > 5 },
+    { number: 6, label: 'Start', active: step === 6, completed: false },
+  ];
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-cyan-50 via-white to-purple-50 p-4 sm:p-6 lg:p-8">
+      <div className="max-w-4xl mx-auto">
+        <div className="flex items-center gap-3 mb-8">
+          <PlayCircle className="w-8 h-8 text-cyan-600" />
+          <h1 className="text-3xl font-bold text-gray-900">Training Suite</h1>
+        </div>
+
+        <div className="flex items-center justify-between mb-8">
+          {steps.map((s, idx) => (
+            <div key={s.number} className="flex items-center flex-1">
+              <div
+                onClick={() => s.completed && goToStep(s.number as 1 | 2 | 3 | 4 | 5 | 6)}
+                className={`flex items-center justify-center w-10 h-10 rounded-full font-semibold transition-colors ${
+                  s.active
+                    ? 'bg-cyan-600 text-white'
+                    : s.completed
+                    ? 'border-2 border-cyan-600 text-cyan-600 bg-white cursor-pointer hover:bg-cyan-50'
+                    : 'border border-gray-300 text-gray-400 bg-white'
+                }`}
+              >
+                {s.number}
+              </div>
+              <div className="ml-2 hidden sm:block">
+                <p className={`text-sm font-medium ${s.active ? 'text-cyan-600' : 'text-gray-600'}`}>
+                  {s.label}
+                </p>
+              </div>
+              {idx < steps.length - 1 && (
+                <div className={`flex-1 h-0.5 mx-2 ${s.completed ? 'bg-cyan-600' : 'bg-gray-300'}`} />
+              )}
+            </div>
+          ))}
+        </div>
+
+        {step === 1 && (
+          <div className="bg-white rounded-2xl shadow-sm p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Schritt 1: Trainingsmodus wählen</h2>
+            <p className="text-gray-600 mb-6">Wähle aus, welchen Bereich du heute trainieren möchtest.</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+              {trainingModes.map(mode => {
+                const Icon = mode.icon;
+                return (
+                  <div
+                    key={mode.id}
+                    onClick={() => setSelectedMode(mode.id as TrainingMode)}
+                    className={`p-4 border-2 rounded-xl cursor-pointer transition-all ${
+                      selectedMode === mode.id
+                        ? 'border-[#A855F7] bg-[#F5F3FF] border-2'
+                        : 'border-gray-200 hover:border-[#A855F7]'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <Icon className="w-6 h-6 text-[#A855F7] flex-shrink-0" />
+                      <div>
+                        <h3 className="font-semibold text-gray-900">{mode.title}</h3>
+                        <p className="text-sm text-gray-600 mt-1">{mode.description}</p>
+                        {MODE_DESCRIPTIONS[mode.id as TrainingMode] && (
+                          <InfoTooltip content={MODE_DESCRIPTIONS[mode.id as TrainingMode]} />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-center mt-8">
+              <button
+                onClick={handleStep1Next}
+                disabled={!selectedMode}
+                className={`px-8 py-3 rounded-xl font-semibold transition-colors ${
+                  selectedMode
+                    ? 'bg-[#A855F7] hover:bg-[#9333EA] text-white'
+                    : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                Weiter
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="bg-white rounded-2xl shadow-sm p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Schritt 2: Menschentyp auswählen</h2>
+            <p className="text-gray-600 mb-2">Welcher Kundentyp soll im Training simuliert werden?</p>
+            {isPremiumOrPro ? (
+              <p className="text-sm text-gray-500 mb-6">Optional: Ohne Auswahl bleibt der Typ flexibel</p>
+            ) : (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+                <p className="text-sm text-amber-800">
+                  Menschentypen sind im Starter-Paket nicht individualisierbar. Wir wählen automatisch einen passenden Typ für dich.
+                </p>
+              </div>
+            )}
+
+            <div className={`grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 ${!isPremiumOrPro ? 'opacity-50 pointer-events-none' : ''}`}>
+              {disgTypes.map(type => (
+                <div
+                  key={type.id}
+                  onClick={() => isPremiumOrPro && setSelectedDisgType(type.id as DisgType)}
+                  className={`p-6 border-2 rounded-xl transition-all text-center ${
+                    isPremiumOrPro ? 'cursor-pointer' : 'cursor-not-allowed'
+                  } ${
+                    selectedDisgType === type.id
+                      ? 'border-[#A855F7] bg-[#F5F3FF] border-2'
+                      : 'border-gray-200 hover:border-[#A855F7]'
+                  }`}
+                >
+                  <div className={`w-16 h-16 ${type.color} rounded-full mx-auto mb-3`}></div>
+                  <h3 className="font-semibold text-gray-900">{type.title}</h3>
+                  <p className="text-sm text-gray-600 mt-1">{type.description}</p>
+                  {COLOR_TYPE_DESCRIPTIONS[type.id as DisgType] && (
+                    <div className="mt-2">
+                      <InfoTooltip content={COLOR_TYPE_DESCRIPTIONS[type.id as DisgType]} />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-center items-center gap-3">
+              <button
+                onClick={handleStepBack}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold border-2 border-cyan-600 text-cyan-600 hover:bg-cyan-50 transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Zurück
+              </button>
+
+              {isPremiumOrPro && (
+                <button
+                  onClick={randomizeStep2}
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-medium text-gray-700 bg-transparent hover:text-gray-900 hover:bg-gray-100 transition-colors"
+                >
+                  <Shuffle className="w-4 h-4" />
+                  Zufällig
+                </button>
+              )}
+
+              <button
+                onClick={handleStep2Next}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold bg-[#A855F7] hover:bg-[#9333EA] text-white transition-colors"
+              >
+                Weiter
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="bg-white rounded-2xl shadow-sm p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Schritt 3: META-Programme</h2>
+            <p className="text-gray-600 mb-2">Feintuning der Kundenpsychologie</p>
+
+            {!isProUser && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+                <p className="text-sm text-amber-800">
+                  {userPackage === 'starter'
+                    ? 'META-Programme stehen im Starter-Paket nicht zur Verfügung. Es wird ein Standard-Profil verwendet.'
+                    : 'META-Programme sind nur im Pro-Paket verfügbar. In deinem Paket wird ein Standard-Profil verwendet.'}
+                </p>
+              </div>
+            )}
+
+            <div className={`space-y-6 mb-8 ${!isProUser ? 'opacity-40 pointer-events-none' : ''}`}>
+              <div className={!isProUser ? 'bg-gray-50 rounded-lg p-4' : ''}>
+                <h3 className="font-semibold text-gray-900 mb-3">Detail-Level</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => isProUser && setMetaPrograms(prev => ({ ...prev, detailLevel: 'detail' }))}
+                    disabled={!isProUser}
+                    className={`p-4 border-2 rounded-xl transition-all ${
+                      metaPrograms.detailLevel === 'detail'
+                        ? 'border-[#A855F7] bg-[#F5F3FF]'
+                        : 'border-gray-200 hover:border-[#A855F7]'
+                    } ${!isProUser ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                  >
+                    <span className="font-medium">Detail-orientiert</span>
+                    {META_PROGRAM_DESCRIPTIONS.detailLevel && (
+                      <InfoTooltip content={META_PROGRAM_DESCRIPTIONS.detailLevel} />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => isProUser && setMetaPrograms(prev => ({ ...prev, detailLevel: 'overview' }))}
+                    disabled={!isProUser}
+                    className={`p-4 border-2 rounded-xl transition-all ${
+                      metaPrograms.detailLevel === 'overview'
+                        ? 'border-[#A855F7] bg-[#F5F3FF]'
+                        : 'border-gray-200 hover:border-[#A855F7]'
+                    } ${!isProUser ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                  >
+                    <span className="font-medium">Überblick</span>
+                    {META_PROGRAM_DESCRIPTIONS.overview && (
+                      <InfoTooltip content={META_PROGRAM_DESCRIPTIONS.overview} />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className={!isProUser ? 'bg-gray-50 rounded-lg p-4' : ''}>
+                <h3 className="font-semibold text-gray-900 mb-3">Entscheidungsgeschwindigkeit</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => isProUser && setMetaPrograms(prev => ({ ...prev, decisionSpeed: 'fast' }))}
+                    disabled={!isProUser}
+                    className={`p-4 border-2 rounded-xl transition-all ${
+                      metaPrograms.decisionSpeed === 'fast'
+                        ? 'border-[#A855F7] bg-[#F5F3FF]'
+                        : 'border-gray-200 hover:border-[#A855F7]'
+                    } ${!isProUser ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                  >
+                    <span className="font-medium">Schnell</span>
+                    {META_PROGRAM_DESCRIPTIONS.fast && (
+                      <InfoTooltip content={META_PROGRAM_DESCRIPTIONS.fast} />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => isProUser && setMetaPrograms(prev => ({ ...prev, decisionSpeed: 'slow' }))}
+                    disabled={!isProUser}
+                    className={`p-4 border-2 rounded-xl transition-all ${
+                      metaPrograms.decisionSpeed === 'slow'
+                        ? 'border-[#A855F7] bg-[#F5F3FF]'
+                        : 'border-gray-200 hover:border-[#A855F7]'
+                    } ${!isProUser ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                  >
+                    <span className="font-medium">Bedächtig</span>
+                    {META_PROGRAM_DESCRIPTIONS.slow && (
+                      <InfoTooltip content={META_PROGRAM_DESCRIPTIONS.slow} />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className={!isProUser ? 'bg-gray-50 rounded-lg p-4' : ''}>
+                <h3 className="font-semibold text-gray-900 mb-3">Fokus-Typ</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => isProUser && setMetaPrograms(prev => ({ ...prev, focusType: 'facts' }))}
+                    disabled={!isProUser}
+                    className={`p-4 border-2 rounded-xl transition-all ${
+                      metaPrograms.focusType === 'facts'
+                        ? 'border-[#A855F7] bg-[#F5F3FF]'
+                        : 'border-gray-200 hover:border-[#A855F7]'
+                    } ${!isProUser ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                  >
+                    <span className="font-medium">Fakten</span>
+                    {META_PROGRAM_DESCRIPTIONS.facts && (
+                      <InfoTooltip content={META_PROGRAM_DESCRIPTIONS.facts} />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => isProUser && setMetaPrograms(prev => ({ ...prev, focusType: 'relationship' }))}
+                    disabled={!isProUser}
+                    className={`p-4 border-2 rounded-xl transition-all ${
+                      metaPrograms.focusType === 'relationship'
+                        ? 'border-[#A855F7] bg-[#F5F3FF]'
+                        : 'border-gray-200 hover:border-[#A855F7]'
+                    } ${!isProUser ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                  >
+                    <span className="font-medium">Beziehung</span>
+                    {META_PROGRAM_DESCRIPTIONS.relationship && (
+                      <InfoTooltip content={META_PROGRAM_DESCRIPTIONS.relationship} />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className={!isProUser ? 'bg-gray-50 rounded-lg p-4' : ''}>
+                <h3 className="font-semibold text-gray-900 mb-3">Kommunikationsstil</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => isProUser && setMetaPrograms(prev => ({ ...prev, communicationStyle: 'direct' }))}
+                    disabled={!isProUser}
+                    className={`p-4 border-2 rounded-xl transition-all ${
+                      metaPrograms.communicationStyle === 'direct'
+                        ? 'border-[#A855F7] bg-[#F5F3FF]'
+                        : 'border-gray-200 hover:border-[#A855F7]'
+                    } ${!isProUser ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                  >
+                    <span className="font-medium">Direkt</span>
+                    {META_PROGRAM_DESCRIPTIONS.direct && (
+                      <InfoTooltip content={META_PROGRAM_DESCRIPTIONS.direct} />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => isProUser && setMetaPrograms(prev => ({ ...prev, communicationStyle: 'indirect' }))}
+                    disabled={!isProUser}
+                    className={`p-4 border-2 rounded-xl transition-all ${
+                      metaPrograms.communicationStyle === 'indirect'
+                        ? 'border-[#A855F7] bg-[#F5F3FF]'
+                        : 'border-gray-200 hover:border-[#A855F7]'
+                    } ${!isProUser ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                  >
+                    <span className="font-medium">Indirekt</span>
+                    {META_PROGRAM_DESCRIPTIONS.indirect && (
+                      <InfoTooltip content={META_PROGRAM_DESCRIPTIONS.indirect} />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-center items-center gap-3">
+              <button
+                onClick={handleStepBack}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold border-2 border-cyan-600 text-cyan-600 hover:bg-cyan-50 transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Zurück
+              </button>
+
+              {isProUser && (
+                <button
+                  onClick={randomizeStep3}
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-lg font-medium text-gray-700 bg-transparent hover:text-gray-900 hover:bg-gray-100 transition-colors"
+                >
+                  <Shuffle className="w-4 h-4" />
+                  Zufällig
+                </button>
+              )}
+
+              <button
+                onClick={handleStep3Next}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold bg-[#A855F7] hover:bg-[#9333EA] text-white transition-colors"
+              >
+                Weiter
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="bg-white rounded-2xl shadow-sm p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Schritt 4: Vorgaben wählen</h2>
+            <p className="text-gray-600 mb-6">Woher sollen die Gesprächsleitfäden kommen?</p>
+
+            <div className="space-y-4 mb-8">
+              {guideModes.map(mode => {
+                const isAvailable = mode.packages.includes(userPackage);
+                const Icon = mode.icon;
+                const isSelected = selectedGuideMode === mode.id;
+
+                return (
+                  <div
+                    key={mode.id}
+                    onClick={() => isAvailable && setSelectedGuideMode(mode.id as GuideMode)}
+                    className={`p-6 border-2 rounded-xl transition-all ${
+                      !isAvailable ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                    } ${
+                      isSelected
+                        ? 'border-[#A855F7] bg-[#F5F3FF] border-2'
+                        : 'border-gray-200 hover:border-[#A855F7]'
+                    }`}
+                  >
+                    <div className="flex items-start gap-4">
+                      <Icon className={`w-6 h-6 flex-shrink-0 mt-1 ${isAvailable ? 'text-[#A855F7]' : 'text-gray-400'}`} />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <h3 className={`font-semibold ${isAvailable ? 'text-gray-900' : 'text-gray-500'}`}>
+                            {mode.title}
+                          </h3>
+                          {!isAvailable && (
+                            <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
+                              {userPackage === 'starter' ? 'Premium/Pro' : 'Pro'}
+                            </span>
+                          )}
+                        </div>
+                        <p className={`text-sm ${isAvailable ? 'text-gray-600' : 'text-gray-500'}`}>
+                          {mode.description}
+                        </p>
+                        {mode.id === 'saved' && isSelected && isAvailable && (
+                          <select
+                            value={selectedGuideId || ''}
+                            onChange={(e) => setSelectedGuideId(e.target.value)}
+                            className="w-full mt-3 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#A855F7] focus:border-[#A855F7]"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <option value="">Leitfaden auswählen...</option>
+                            {availableGuides.map((guide) => (
+                              <option key={guide.id} value={guide.id}>
+                                {guide.title}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-center items-center gap-3">
+              <button
+                onClick={handleStepBack}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold border-2 border-cyan-600 text-cyan-600 hover:bg-cyan-50 transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Zurück
+              </button>
+
+              <button
+                onClick={handleStep4Next}
+                disabled={!selectedGuideMode || (selectedGuideMode === 'saved' && !selectedGuideId)}
+                className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold transition-colors ${
+                  selectedGuideMode && (selectedGuideMode !== 'saved' || selectedGuideId)
+                    ? 'bg-[#A855F7] hover:bg-[#9333EA] text-white'
+                    : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                Weiter
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 5 && (
+          <div className="bg-white rounded-2xl shadow-sm p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Schritt 5: Schwierigkeitsgrad wählen</h2>
+            <p className="text-gray-600 mb-6">Wie anspruchsvoll soll dein heutiges Training sein?</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+              {difficultyLevels.map(level => (
+                <div
+                  key={level.id}
+                  onClick={() => setSelectedDifficulty(level.id as DifficultyLevel)}
+                  className={`p-6 border-2 rounded-xl cursor-pointer transition-all text-center ${
+                    selectedDifficulty === level.id
+                      ? 'border-[#A855F7] bg-[#F5F3FF] border-2 shadow-md'
+                      : 'border-gray-200 hover:border-[#A855F7] hover:shadow-sm'
+                  }`}
+                >
+                  <div className="text-4xl mb-3">{level.icon}</div>
+                  <h3 className="font-semibold text-gray-900 text-lg mb-2">{level.title}</h3>
+                  <p className="text-sm text-gray-600">{level.description}</p>
+                  <div className="mt-2">
+                    <InfoTooltip content={`${level.title}: ${level.description}`} />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-center items-center gap-3">
+              <button
+                onClick={handleStepBack}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold border-2 border-cyan-600 text-cyan-600 hover:bg-cyan-50 transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Zurück
+              </button>
+
+              <button
+                onClick={handleStep5Next}
+                disabled={!selectedDifficulty}
+                className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold transition-colors ${
+                  selectedDifficulty
+                    ? 'bg-[#A855F7] hover:bg-[#9333EA] text-white'
+                    : 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                Weiter
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 6 && (
+          <div className="bg-white rounded-2xl shadow-sm p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Schritt 6: Zusammenfassung & Start</h2>
+            <p className="text-gray-600 mb-6">Deine Trainingskonfiguration ist bereit!</p>
+
+            {/* Avatar Image */}
+            <div className="flex justify-center mb-6">
+              <div className="relative">
+                <img
+                  src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedDisgType || 'default'}&backgroundColor=b6e3f4,c0aede,d1d4f9`}
+                  alt="Kunden-Avatar"
+                  className="w-32 h-32 rounded-full border-4 border-white shadow-lg"
+                />
+                {selectedDisgType && (
+                  <div className={`absolute bottom-0 right-0 w-8 h-8 rounded-full border-4 border-white ${disgTypes.find(t => t.id === selectedDisgType)?.color}`}></div>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-cyan-50 to-purple-50 rounded-xl p-6 mb-8">
+              <h3 className="font-semibold text-gray-900 mb-4">Ausgewählte Parameter:</h3>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-32 text-sm text-gray-600">Modus:</div>
+                  <div className="font-medium text-gray-900">
+                    {trainingModes.find(m => m.id === selectedMode)?.title || '-'}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-32 text-sm text-gray-600">Menschentyp:</div>
+                  <div className="font-medium text-gray-900">
+                    {selectedDisgType ? disgTypes.find(t => t.id === selectedDisgType)?.title : 'Nicht festgelegt'}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-32 text-sm text-gray-600">META-Programme:</div>
+                  <div className="font-medium text-gray-900">
+                    {isProUser ? (
+                      metaPrograms.detailLevel ? 'Konfiguriert' : 'Nicht festgelegt'
+                    ) : (
+                      'Standard-Profil'
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-32 text-sm text-gray-600">Vorgaben:</div>
+                  <div className="font-medium text-gray-900">
+                    {selectedGuideMode === 'internal' && 'Interne Leitfäden'}
+                    {selectedGuideMode === 'generated' && 'KI-generiert'}
+                    {selectedGuideMode === 'saved' && availableGuides.find(g => g.id === selectedGuideId)?.title}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-32 text-sm text-gray-600">Schwierigkeit:</div>
+                  <div className="font-medium text-gray-900">
+                    {difficultyLevels.find(l => l.id === selectedDifficulty)?.title || '-'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-center items-center gap-3">
+              <button
+                onClick={handleStepBack}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold border-2 border-cyan-600 text-cyan-600 hover:bg-cyan-50 transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Zurück
+              </button>
+
+              <button
+                onClick={startTraining}
+                className="inline-flex items-center gap-2 px-8 py-3 rounded-xl font-semibold bg-[#A855F7] hover:bg-[#9333EA] text-white transition-colors"
+              >
+                <PlayCircle className="w-5 h-5" />
+                Training starten
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
