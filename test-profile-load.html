@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Profile Load Test</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <h1>Profile Load Test</h1>
+  <div id="output"></div>
+
+  <script type="module">
+    // Load from .env values
+    const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+    const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    async function testProfileLoad() {
+      const output = document.getElementById('output');
+      output.innerHTML = '<p>Testing profile load...</p>';
+
+      try {
+        // Test 1: Get current session
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        console.log('Session:', sessionData);
+
+        if (sessionError) {
+          output.innerHTML += `<p style="color: red;">Session Error: ${sessionError.message}</p>`;
+          return;
+        }
+
+        if (!sessionData.session) {
+          output.innerHTML += '<p style="color: orange;">No active session. Please login first.</p>';
+          return;
+        }
+
+        const userId = sessionData.session.user.id;
+        output.innerHTML += `<p>✓ Session found for user: ${userId}</p>`;
+
+        // Test 2: Load profile
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle();
+
+        console.log('Profile Data:', profileData);
+        console.log('Profile Error:', profileError);
+
+        if (profileError) {
+          output.innerHTML += `<p style="color: red;">Profile Error: ${profileError.message}</p>`;
+          output.innerHTML += `<pre>${JSON.stringify(profileError, null, 2)}</pre>`;
+          return;
+        }
+
+        if (!profileData) {
+          output.innerHTML += '<p style="color: red;">✗ No profile found!</p>';
+          return;
+        }
+
+        output.innerHTML += '<p style="color: green;">✓ Profile loaded successfully!</p>';
+        output.innerHTML += `<pre>${JSON.stringify(profileData, null, 2)}</pre>`;
+
+        // Test 3: Check role type
+        output.innerHTML += `<p>Role type: ${typeof profileData.role}</p>`;
+        output.innerHTML += `<p>Role value: ${profileData.role}</p>`;
+
+      } catch (err) {
+        output.innerHTML += `<p style="color: red;">Exception: ${err.message}</p>`;
+        console.error(err);
+      }
+    }
+
+    // Run test on page load
+    testProfileLoad();
+  </script>
+</body>
+</html>
